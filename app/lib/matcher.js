@@ -88,6 +88,17 @@ function tokenOverlap(queryTokens, candTokens) {
   return hits / queryTokens.length;
 }
 
+// Errät das Spiel aus dem Produktnamen anhand typischer Schlüsselwörter.
+// Gibt "pokemon" | "lorcana" | "one-piece" zurück, oder null wenn unklar.
+export function detectGame(name) {
+  const n = (name || "").toLowerCase();
+  // One Piece zuerst prüfen (spezifischer), dann Lorcana, dann Pokémon.
+  if (/one[\s-]?piece|\bop-?\d|romance dawn|\bluffy\b/.test(n)) return "one-piece";
+  if (/lorcana|disney|illumineer|floodborn|inklands/.test(n)) return "lorcana";
+  if (/pok[eé]mon|scarlet|violet|prismatic|obsidian|paldea|\betb\b|\bsv\b/.test(n)) return "pokemon";
+  return null; // unklar → später gegen alle Spiele matchen
+}
+
 export function matchProduct(shopName, catalog) {
   const qTokens = tokenize(shopName);
   const qType = classifyType(shopName);

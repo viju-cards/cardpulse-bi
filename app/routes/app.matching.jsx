@@ -1,22 +1,29 @@
 import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
-import { matchProduct } from "../lib/matcher";
-
-// Zwischenlösung: fest eingebauter Test-Katalog.
-// Kommt später aus der Neon-DB (echte Cardmarket-Sealed-Produkte).
-const CATALOG = [
-  { id: 1, name: "Prismatic Evolutions Elite Trainer Box" },
-  { id: 2, name: "Obsidian Flames Booster Box" },
-  { id: 3, name: "Scarlet & Violet 151 Booster Box" },
-  { id: 4, name: "Lorcana The First Chapter Booster Box" },
-  { id: 5, name: "One Piece Romance Dawn Booster Box" },
-  { id: 6, name: "Paldea Evolved Elite Trainer Box" },
-  { id: 7, name: "Crown Zenith Premium Collection" },
-  { id: 8, name: "Temporal Forces Booster Box" },
-];
+import { matchProduct, detectGame } from "../lib/matcher";
+import { pool } from "../lib/neon.server";
 
 export const loader = async ({ request }) => {
   const { admin } = await authenticate.admin(request);
+
+  // Echten Cardmarket-Katalog aus Neon laden (ohne die "kein Treffer"-Markierten)
+ // Kompletten Katalog laden – inкl. game-Spalte, damit wir pro Spiel filtern können.
+  const catalogResult = await pool.query(
+    `SELECT id, tcgplayer_name AS name, game
+       FROM sealed_mapping
+      WHERE tcg_no_match = false
+        AND tcgplayer_name IS NOT NULL`,
+  );
+  const FULL_CATALOG = catalogResult.rows;
+
+  // Pro Spiel einen Teil-Katalog vorbereiten (einmal, nicht pro Produkt).
+  const catalogByGame = {};
+  for (const row of FULL_CATALOG) {
+    const g = row.game || "pokemon";
+    (catalogByGame[g] = catalogByGame[g] || []).push(row);
+  }
+
+  // Produkte aus dem Shop holen (nur Titel reicht fürs Matching)
 
   // Produkte aus dem Shop holen (nur Titel reicht fürs Matching)
   const response = await admin.graphql(
@@ -32,7 +39,11 @@ export const loader = async ({ request }) => {
 
   // Jedes Shop-Produkt durch den Matcher schicken
   const results = products.map((p) => {
-    const r = matchProduct(p.title, CATALOG);
+    // Spiel aus dem Namen erkennen; passenden Teil-Katalog wählen.
+    // Unklar → gegen den gesamten Katalog matchen (Rückfall).
+    const game = detectGame(p.title);
+    const catalog = game ? (catalogByGame[game] || []) : FULL_CATALOG;
+    const r = matchProduct(p.title, catalog);
     let stufe;
     if (r.confidence >= 95) stufe = "auto";
     else if (r.confidence >= 70) stufe = "pruefen";
