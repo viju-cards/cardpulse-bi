@@ -79,13 +79,25 @@ function wordsMatch(a, b) {
   return lev(a, b) <= 1;
 }
 
+// Ist ein Token eine Set-Nummer/Edition? (enthält eine Ziffer, z.B. "151", "op01")
+function isNumberToken(t) {
+  return /\d/.test(t);
+}
+
+// Gewichteter Overlap: Zahlen-Tokens (Set-Nummern) zählen stärker als Wörter,
+// weil sie oft der einzige Unterschied zwischen zwei ähnlichen Produkten sind
+// (z.B. "151 Booster Box" vs. "Scarlet Violet Booster Box").
 function tokenOverlap(queryTokens, candTokens) {
   if (queryTokens.length === 0) return 0;
-  let hits = 0;
+  const NUM_WEIGHT = 3; // eine Set-Nummer wiegt wie 3 normale Wörter
+  let totalWeight = 0;
+  let hitWeight = 0;
   for (const q of queryTokens) {
-    if (candTokens.some((c) => wordsMatch(q, c))) hits++;
+    const w = isNumberToken(q) ? NUM_WEIGHT : 1;
+    totalWeight += w;
+    if (candTokens.some((c) => wordsMatch(q, c))) hitWeight += w;
   }
-  return hits / queryTokens.length;
+  return hitWeight / totalWeight;
 }
 
 // Errät das Spiel aus dem Produktnamen anhand typischer Schlüsselwörter.
@@ -117,9 +129,9 @@ export function matchProduct(shopName, catalog) {
   }
 
  const confidence = best ? Math.round(best.score * 100) : 0;
-  // Unter 40 % ist der "beste" Treffer praktisch wertlos – dann lieber
-  // gar keinen anzeigen, statt einen sinnlosen Vorschlag zu machen.
-  if (!best || confidence < 40) {
+  // Einen Treffer-Vorschlag nur ab 70 % zeigen. Darunter landet das Produkt
+  // ohnehin in "Manuell" – ein schwacher Vorschlag würde dort nur verwirren.
+  if (!best || confidence < 70) {
     return { match: null, confidence };
   }
   return { match: best.cand, confidence };
